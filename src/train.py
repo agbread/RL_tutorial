@@ -1,0 +1,307 @@
+"""
+Improved train.py for Go2 quadruped locomotion (Stable-Baselines3 PPO + MuJoCo).
+
+원본(nimazareian/quadruped-rl-locomotion)의 장점(argparse, train/test 분리,
+영상 녹화)과 사용자 코드의 장점(yaml 설정, CheckpointCallback,
+RewardLoggingCallback, base_dir 절대경로, 안전한 close)을 결합한 버전.
+
+⚠️ 가정 (실제 코드에 맞게 조정 필요):
+  - Go2MujocoEnv(prj_path: str, render_mode=None, ...) 형태로 생성 가능하다고 가정.
+  - ctrl_type / camera_name / width / height 인자는 Go2MujocoEnv가 지원할 때만 사용.
+  - params.yaml 키 구조는 사용자 코드와 동일하다고 가정.
+"""
+
+import argparse
+import time
+from pathlib import Path
+
+import numpy as np
+import yaml
+import gymnasium as gym
+from tqdm import tqdm
+
+from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import (
+    EvalCallback,
+    CheckpointCallback,
+    CallbackList,
+)
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+from stable_baselines3.common.env_util import make_vec_env
+
+from go2_mujoco_env import Go2MujocoEnv
+from utils.reward_logging_callback import RewardLoggingCallback
+
+
+# --------------------------------------------------------------------------- #
+# Config helpers
+# --------------------------------------------------------------------------- #
+def load_config(base_dir: Path) -> dict:
+    cfg_path = base_dir / "src" / "params.yaml"
+    if not cfg_path.exists():
+        raise FileNotFoundError(f"params.yaml not found: {cfg_path}")
+    with cfg_path.open("r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    # 필수 키 검증 (빠진 키를 조기에 알려줌)
+    required_top = ["n_envs", "seed", "eval_freq", "total_timestep"]
+    required_policy = [
+        "use_pretrained", "learning_rate", "n_steps", "batch_size", "n_epochs",
+        "gamma", "gae_lambda", "clip_range", "normalize_advantage",
+        "ent_coef", "vf_coef", "max_grad_norm",
+    ]
+    for k in required_top:
+        if k not in cfg:
+            raise KeyError(f"params.yaml 최상위 키 누락: '{k}'")
+    for k in required_policy:
+        if k not in cfg.get("policy", {}):
+            raise KeyError(f"params.yaml policy 키 누락: 'policy.{k}'")
+    if "interval" not in cfg.get("log", {}):
+        raise KeyError("params.yaml 키 누락: 'log.interval'")
+    return cfg
+
+
+def build_ppo_kwargs(cfg: dict) -> dict:
+    p = cfg["policy"]
+    return dict(
+        learning_rate=p["learning_rate"],
+        n_steps=p["n_steps"],
+        batch_size=p["batch_size"],
+        n_epochs=p["n_epochs"],
+        gamma=p["gamma"],
+        gae_lambda=p["gae_lambda"],
+        clip_range=p["clip_range"],
+        normalize_advantage=p["normalize_advantage"],
+        ent_coef=p["ent_coef"],
+        vf_coef=p["vf_coef"],
+        max_grad_norm=p["max_grad_norm"],
+    )
+
+
+def resolve_pretrained_path(cfg: dict, base_dir: Path, cli_path: str | None) -> Path | None:
+    """우선순위: CLI --model_path > yaml policy.pretrained_path (use_pretrained=True일 때)."""
+    if cli_path:
+        return Path(cli_path)
+    if cfg["policy"].get("use_pretrained"):
+        yaml_path = cfg["policy"].get("pretrained_path")
+        if not yaml_path:
+            raise ValueError(
+                "use_pretrained=True 이지만 'policy.pretrained_path'가 yaml에 없습니다."
+            )
+        return (base_dir / yaml_path) if not Path(yaml_path).is_absolute() else Path(yaml_path)
+    return None
+
+
+def make_env_kwargs(base_dir: Path, args, render_mode=None) -> dict:
+    """Go2MujocoEnv 생성 인자. ctrl_type은 지원될 때만 추가."""
+    kwargs = {"prj_path": base_dir.as_posix(), "render_mode": render_mode}
+    if getattr(args, "ctrl_type", None) is not None:
+        kwargs["ctrl_type"] = args.ctrl_type  # Go2가 지원하지 않으면 제거할 것
+    return kwargs
+
+
+# --------------------------------------------------------------------------- #
+# Train
+# --------------------------------------------------------------------------- #
+def train(args):
+    base_dir = Path(__file__).resolve().parents[1]
+    cfg = load_config(base_dir)
+
+    model_dir = base_dir / "models"
+    log_dir = base_dir / "logs"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    n_envs = args.num_parallel_envs or cfg["n_envs"]
+    seed = args.seed if args.seed is not None else cfg["seed"]
+    total_timesteps = args.total_timesteps or cfg["total_timestep"]
+
+    # n_steps * n_envs 가 batch_size 로 나누어떨어지는지 확인 (미니배치 truncation 방지)
+    rollout = cfg["policy"]["n_steps"] * n_envs
+    if rollout % cfg["policy"]["batch_size"] != 0:
+        print(
+            f"[WARN] (n_steps*n_envs)={rollout} 가 batch_size="
+            f"{cfg['policy']['batch_size']} 로 나누어떨어지지 않습니다. 미니배치 일부가 버려집니다."
+        )
+
+    train_env_kwargs = make_env_kwargs(base_dir, args, render_mode=None)
+    vec_env = make_vec_env(
+        Go2MujocoEnv,
+        env_kwargs=train_env_kwargs,
+        n_envs=n_envs,
+        seed=seed,
+        vec_env_cls=SubprocVecEnv,
+    )
+
+    # 평가 전용 env (학습 env와 분리, 단일 환경, seed 다르게)
+    eval_env = make_vec_env(
+        Go2MujocoEnv,
+        env_kwargs=train_env_kwargs,
+        n_envs=1,
+        seed=seed + 10_000,
+        vec_env_cls=DummyVecEnv,
+    )
+
+    try:
+        # 출력은 별도 env 생성 없이 vec_env 의 space 사용 (누수 방지)
+        print(f"[INFO] base_dir = {base_dir}")
+        print(f"[INFO] n_envs = {n_envs}, seed = {seed}, total_timesteps = {total_timesteps}")
+        print(f"[INFO] Action space: {vec_env.action_space}")
+        print(f"[INFO] Observation space: {vec_env.observation_space}")
+
+        train_time = time.strftime("%Y-%m-%d_%H-%M-%S")
+        run_name = train_time if args.run_name is None else f"{train_time}-{args.run_name}"
+        model_path = model_dir / run_name
+        model_path.mkdir(parents=True, exist_ok=True)
+        print(f"[INFO] Saving models to '{model_path}'")
+
+        # 콜백 주기는 '총 timestep 기준' 값을 n_envs 로 나눠 호출 횟수로 변환
+        save_freq_steps = cfg["policy"]["n_steps"] * cfg["log"]["interval"]
+        checkpoint_callback = CheckpointCallback(
+            save_freq=max(save_freq_steps // n_envs, 1),
+            save_path=str(model_path),
+            name_prefix="model",
+            save_replay_buffer=False,
+            save_vecnormalize=False,
+        )
+        eval_callback = EvalCallback(
+            eval_env,
+            best_model_save_path=str(model_path),
+            log_path=str(log_dir),
+            eval_freq=max(cfg["eval_freq"] // n_envs, 1),
+            n_eval_episodes=5,
+            deterministic=True,
+            render=False,
+        )
+        reward_logging_callback = RewardLoggingCallback()
+        callbacks = CallbackList(
+            [eval_callback, checkpoint_callback, reward_logging_callback]
+        )
+
+        ppo_kwargs = build_ppo_kwargs(cfg)
+        pretrained_path = resolve_pretrained_path(cfg, base_dir, args.model_path)
+
+        if pretrained_path is not None:
+            if not Path(pretrained_path).exists():
+                raise FileNotFoundError(f"pretrained model not found: {pretrained_path}")
+            print(f"[INFO] Loading pretrained model from {pretrained_path}")
+            # 재개 시에는 저장된 구조/하이퍼파라미터를 신뢰하고, 필요한 것만 명시적으로 갱신.
+            model = PPO.load(
+                str(pretrained_path),
+                env=vec_env,
+                verbose=1,
+                tensorboard_log=str(log_dir),
+            )
+            # 학습률만 새로 적용하고 싶다면 (스케줄 재생성):
+            model.learning_rate = cfg["policy"]["learning_rate"]
+            model._setup_lr_schedule()
+        else:
+            model = PPO(
+                "MlpPolicy",
+                env=vec_env,
+                verbose=1,
+                tensorboard_log=str(log_dir),
+                seed=seed,
+                **ppo_kwargs,
+            )
+
+        model.learn(
+            total_timesteps=total_timesteps,
+            reset_num_timesteps=(pretrained_path is None),
+            progress_bar=True,
+            tb_log_name=run_name,
+            callback=callbacks,
+        )
+        model.save(model_path / "final_model")
+        print(f"[INFO] Final model saved to {model_path / 'final_model'}")
+    finally:
+        vec_env.close()
+        eval_env.close()
+
+
+# --------------------------------------------------------------------------- #
+# Test
+# --------------------------------------------------------------------------- #
+def test(args):
+    base_dir = Path(__file__).resolve().parents[1]
+    if args.model_path is None:
+        raise ValueError("--model_path is required for testing")
+    model_path = Path(args.model_path)
+    if not model_path.is_absolute():
+        model_path = base_dir / model_path
+
+    env_kwargs = {"prj_path": base_dir.as_posix()}
+    if getattr(args, "ctrl_type", None) is not None:
+        env_kwargs["ctrl_type"] = args.ctrl_type
+
+    if not args.record_test_episodes:
+        env = Go2MujocoEnv(render_mode="human", **env_kwargs)
+        inter_frame_sleep = 0.016
+    else:
+        # camera_name/width/height 는 Go2MujocoEnv 가 지원할 때만. 미지원 시 제거.
+        env = Go2MujocoEnv(
+            render_mode="rgb_array",
+            camera_name="tracking",
+            width=1920,
+            height=1080,
+            **env_kwargs,
+        )
+        env = gym.wrappers.RecordVideo(
+            env, video_folder="recordings/", name_prefix=model_path.parent.name
+        )
+        inter_frame_sleep = 0.0
+
+    try:
+        model = PPO.load(path=str(model_path), env=env, verbose=1)
+        total_reward, total_length = 0.0, 0
+        for _ in tqdm(range(args.num_test_episodes)):
+            obs, _ = env.reset()
+            env.render()
+            ep_len, ep_reward = 0, 0.0
+            while True:
+                action, _ = model.predict(obs, deterministic=True)
+                obs, reward, terminated, truncated, info = env.step(action)
+                ep_reward += reward
+                ep_len += 1
+                time.sleep(inter_frame_sleep)
+                if terminated or truncated:
+                    print(f"{ep_len=} {ep_reward=}")
+                    break
+            total_length += ep_len
+            total_reward += ep_reward
+        n = args.num_test_episodes
+        print(f"Avg reward: {total_reward / n}, avg length: {total_length / n}")
+    finally:
+        env.close()
+
+
+# --------------------------------------------------------------------------- #
+# CLI
+# --------------------------------------------------------------------------- #
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run", type=str, required=True, choices=["train", "test"])
+    parser.add_argument("--run_name", type=str, default=None,
+                        help="실행 이름. models/ 아래에 학습 시각이 접두로 붙어 저장됨.")
+    parser.add_argument("--num_parallel_envs", type=int, default=None,
+                        help="병렬 환경 수 (미지정 시 yaml n_envs 사용)")
+    parser.add_argument("--num_test_episodes", type=int, default=5)
+    parser.add_argument("--record_test_episodes", action="store_true")
+    parser.add_argument("--total_timesteps", type=int, default=None,
+                        help="학습 총 timestep (미지정 시 yaml total_timestep 사용)")
+    parser.add_argument("--model_path", type=str, default=None,
+                        help="학습: 재개용 시작 모델 / 테스트: 추론용 모델 (.zip)")
+    parser.add_argument("--ctrl_type", type=str, default=None,
+                        choices=["torque", "position"],
+                        help="Go2MujocoEnv가 지원할 때만 전달됨")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="미지정 시 yaml seed 사용")
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    if args.run == "train":
+        train(args)
+    elif args.run == "test":
+        test(args)
