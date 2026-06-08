@@ -1,6 +1,6 @@
 # Go2 Quadruped RL Locomotion
 
-Unitree Go2 4족 보행 로봇의 보행(locomotion) 정책을 **강화학습(PPO)**으로 학습하는 프로젝트입니다.
+Unitree Go2 4족 보행 로봇의 보행(locomotion) 정책을 강화학습(PPO)으로 학습하는 프로젝트입니다.
 [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3)의 PPO와 [MuJoCo](https://mujoco.org/) 물리 시뮬레이터를 사용합니다.
 
 목표 속도 명령 `[vx, vy, wz]`를 따라 걷도록 학습하며, trot 보행 패턴과 발 높이(foot clearance) 등을 보상으로 유도합니다.
@@ -14,7 +14,7 @@ Unitree Go2 4족 보행 로봇의 보행(locomotion) 정책을 **강화학습(PP
 pip install "mujoco==3.8.0" "stable-baselines3==2.3.0" gymnasium "numpy==1.26.4" imageio[ffmpeg] pyyaml tqdm
 ```
 
-> ⚠️ 모델 `.zip`은 numpy 버전에 민감합니다. 학습/추론 시 numpy 버전을 맞추세요 (다르면 `ModuleNotFoundError: No module named 'numpy.core_'` 등이 발생할 수 있습니다).
+> 모델 `.zip`은 numpy 버전에 민감합니다. 학습/추론 시 numpy 버전을 맞추세요 (다르면 `ModuleNotFoundError: No module named 'numpy.core_'` 등이 발생할 수 있습니다).
 
 ## 디렉터리 구조
 
@@ -73,7 +73,7 @@ python test.py --model_path models/<run_name>/best_model.zip --no_video
 
 ### 테스트 (train.py의 test 모드)
 
-화면(human) 렌더링으로 보거나, gymnasium `RecordVideo`로 녹화합니다.
+화면 렌더링으로 보거나, gymnasium `RecordVideo`로 녹화합니다.
 
 ```bash
 # 실시간 화면 렌더링
@@ -85,12 +85,12 @@ python train.py --run test --model_path models/<run_name>/best_model.zip --recor
 
 ## 설정 파일
 
-- **`src/params.yaml`** — PPO 하이퍼파라미터(`learning_rate`, `n_steps`, `batch_size`, `gamma` 등), `n_envs`, `total_timestep`, `seed`, `eval_freq`.
-- **`src/envs.yaml`** — 보상/패널티 가중치, 명령 속도 범위(`command.des_vel`), 보행 패턴(`gait`), 종료 조건(`termination`), 관측 스케일 등.
+- `src/params.yaml` — PPO 하이퍼파라미터(`learning_rate`, `n_steps`, `batch_size`, `gamma` 등), `n_envs`, `total_timestep`, `seed`, `eval_freq`.
+- `src/envs.yaml` — 보상/패널티 가중치, 명령 속도 범위(`command.des_vel`), 보행 패턴(`gait`), 종료 조건(`termination`), 관측 스케일 등.
 
 ## 보상 설계 (요약)
 
-- **Positive**: 선형/각속도 추종(`linear/angular_vel_tracking`), 생존(`healthy`), 기준 높이, 발 체공 시간(`feet_air_time`).
-- **Penalty**: 토크, 수직/롤·피치 각속도, action rate, 관절 한계, trot 보행 강제(`gait_enforcement`), 발 높이(`foot_clearance`) 등.
+- Positive: 선형/각속도 추종(`linear/angular_vel_tracking`), 생존(`healthy`), 기준 높이, 발 체공 시간(`feet_air_time`).
+- Penalty: 토크, 수직/롤·피치 각속도, action rate, 관절 한계, trot 보행 강제(`gait_enforcement`), 발 높이(`foot_clearance`) 등.
 
 자세한 값은 `src/envs.yaml`, 구현은 `src/mdp/reward.py` 참고.
