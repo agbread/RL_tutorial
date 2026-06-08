@@ -5,6 +5,18 @@ Unitree Go2 4족 보행 로봇의 보행(locomotion) 정책을 강화학습(PPO)
 
 목표 속도 명령 `[vx, vy, wz]`를 따라 걷도록 학습하며, trot 보행 패턴과 발 높이(foot clearance) 등을 보상으로 유도합니다.
 
+## Colab에서 실행
+
+별도 설치 없이 브라우저에서 바로 실행할 수 있습니다. 아래 배지를 클릭하세요.
+(런타임 → 런타임 유형 변경 → **T4 GPU** 권장)
+
+| 노트북 | 설명 | 링크 |
+|--------|------|------|
+| `go2_locomotion_basic.ipynb` | Go2 보행 환경 / 학습 / 추론 기본 튜토리얼 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/agbread/RL_tutorial/blob/main/notebooks/go2_locomotion_basic.ipynb) |
+| `go2_locomotion_reward_ablation.ipynb` | 보상(reward) 설계 단계별 ablation 실험 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/agbread/RL_tutorial/blob/main/notebooks/go2_locomotion_reward_ablation.ipynb) |
+
+> 노트북 첫 셀이 이 repo를 자동으로 clone하고 의존성을 설치합니다. Colab에서는 `/content` 기준으로 동작합니다.
+
 ## 요구 환경
 
 - Python 3.10
