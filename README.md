@@ -33,8 +33,8 @@ pip install "mujoco==3.8.0" "stable-baselines3==2.3.0" gymnasium "numpy==1.26.4"
 ```
 RL_Tutorial/
 ├── src/
-│   ├── train.py             # 학습 / 테스트 엔트리포인트 (--run train|test)
-│   ├── test.py              # 학습된 모델 롤아웃 + 영상 녹화
+│   ├── train.py             # 학습 전용 엔트리포인트
+│   ├── test.py              # 추론 전용: 학습된 모델 롤아웃 + 영상 녹화
 │   ├── go2_mujoco_env.py    # Gymnasium 환경 (MuJoCo 기반 Go2)
 │   ├── params.yaml          # 학습 하이퍼파라미터 (PPO, n_envs 등)
 │   ├── envs.yaml            # 환경 설정 (보상 가중치, 명령 범위, 종료 조건 등)
@@ -55,17 +55,19 @@ RL_Tutorial/
 cd src
 ```
 
-### 학습
+학습은 `train.py`, 추론·영상 녹화는 `test.py`로 역할이 분리되어 있습니다.
+
+### 학습 (train.py)
 
 ```bash
-# 기본 학습 (params.yaml 설정 사용)
-python train.py --run train
+# 기본 학습 (모든 인자는 선택값, 미지정 시 params.yaml 사용)
+python train.py
 
 # 병렬 환경 수 / 총 timestep / 실행 이름 지정
-python train.py --run train --num_parallel_envs 12 --total_timesteps 2000000 --run_name my_run
+python train.py --num_parallel_envs 12 --total_timesteps 2000000 --run_name my_run
 ```
 
-- 모델은 `models/<날짜시각>-<run_name>/` 에 저장됩니다 (`best_model.zip`, 체크포인트, `final_model.zip`).
+- 모델은 `models/<날짜시각>` 또는 `models/<날짜시각>-<run_name>/` 에 저장됩니다 (`best_model.zip`, 체크포인트, `final_model.zip`).
 - 학습 재개: `--model_path <기존모델.zip>` 또는 `params.yaml`의 `policy.use_pretrained: true`.
 - TensorBoard: `tensorboard --logdir logs`
 
@@ -74,6 +76,9 @@ python train.py --run train --num_parallel_envs 12 --total_timesteps 2000000 --r
 학습된 모델을 롤아웃하고 mp4 영상을 저장합니다.
 
 ```bash
+# 기본 모델(Go2_forth_test) 롤아웃 + 영상 저장
+python test.py
+
 # 모델 경로와 명령 속도를 지정해 롤아웃
 python test.py --model_path models/<run_name>/best_model.zip --command 0.9 0.0 0.0
 
@@ -81,19 +86,7 @@ python test.py --model_path models/<run_name>/best_model.zip --command 0.9 0.0 0
 python test.py --model_path models/<run_name>/best_model.zip --no_video
 ```
 
-주요 옵션: `--max_time_step_s`(롤아웃 시간), `--control_hz`(기본 50), `--video_fps`, `--stochastic`(비결정적 추론), `--seed`.
-
-### 테스트 (train.py의 test 모드)
-
-화면 렌더링으로 보거나, gymnasium `RecordVideo`로 녹화합니다.
-
-```bash
-# 실시간 화면 렌더링
-python train.py --run test --model_path models/<run_name>/best_model.zip
-
-# 에피소드 녹화 (recordings/ 에 저장)
-python train.py --run test --model_path models/<run_name>/best_model.zip --record_test_episodes
-```
+주요 옵션: `--model_name`(기본 `Go2_forth_test`), `--max_time_step_s`(롤아웃 시간), `--control_hz`(기본 50), `--video_fps`, `--stochastic`(비결정적 추론), `--seed`.
 
 ## 설정 파일
 
