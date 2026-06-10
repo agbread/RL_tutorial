@@ -1,11 +1,17 @@
+"""
+train.py for Go2 quadruped locomotion (Stable-Baselines3 PPO + MuJoCo).
+
+학습 전용 스크립트. 추론/롤아웃/영상 녹화는 test.py 가 담당한다.
+Go2MujocoEnv 는 position 제어 전용(unitree_go2/scene_position.xml)이므로
+torque/ctrl_type 관련 옵션은 다루지 않는다. CLI 인자는 모두 선택값이며,
+미지정 시 params.yaml 값을 사용한다.
+"""
+
 import argparse
 import time
 from pathlib import Path
 
-import numpy as np
 import yaml
-import gymnasium as gym
-from tqdm import tqdm
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import (
@@ -204,82 +210,22 @@ def train(args):
 
 
 # --------------------------------------------------------------------------- #
-# Test
-# --------------------------------------------------------------------------- #
-def test(args):
-    base_dir = Path(__file__).resolve().parents[1]
-    if args.model_path is None:
-        raise ValueError("--model_path is required for testing")
-    model_path = Path(args.model_path)
-    if not model_path.is_absolute():
-        model_path = base_dir / model_path
-
-    env_kwargs = {"prj_path": base_dir.as_posix()}
-
-    if not args.record_test_episodes:
-        env = Go2MujocoEnv(render_mode="human", **env_kwargs)
-        inter_frame_sleep = 0.016
-    else:
-        env = Go2MujocoEnv(
-            render_mode="rgb_array",
-            camera_name="tracking",
-            width=1920,
-            height=1080,
-            **env_kwargs,
-        )
-        env = gym.wrappers.RecordVideo(
-            env, video_folder="recordings/", name_prefix=model_path.parent.name
-        )
-        inter_frame_sleep = 0.0
-
-    try:
-        model = PPO.load(path=str(model_path), env=env, verbose=1)
-        total_reward, total_length = 0.0, 0
-        for _ in tqdm(range(args.num_test_episodes)):
-            obs, _ = env.reset()
-            env.render()
-            ep_len, ep_reward = 0, 0.0
-            while True:
-                action, _ = model.predict(obs, deterministic=True)
-                obs, reward, terminated, truncated, info = env.step(action)
-                ep_reward += reward
-                ep_len += 1
-                time.sleep(inter_frame_sleep)
-                if terminated or truncated:
-                    print(f"{ep_len=} {ep_reward=}")
-                    break
-            total_length += ep_len
-            total_reward += ep_reward
-        n = args.num_test_episodes
-        print(f"Avg reward: {total_reward / n}, avg length: {total_length / n}")
-    finally:
-        env.close()
-
-
-# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--run", type=str, required=True, choices=["train", "test"])
+    parser = argparse.ArgumentParser(description="Train a Go2 PPO locomotion policy.")
     parser.add_argument("--run_name", type=str, default=None,
                         help="실행 이름. models/ 아래에 학습 시각이 접두로 붙어 저장됨.")
     parser.add_argument("--num_parallel_envs", type=int, default=None,
                         help="병렬 환경 수 (미지정 시 yaml n_envs 사용)")
-    parser.add_argument("--num_test_episodes", type=int, default=5)
-    parser.add_argument("--record_test_episodes", action="store_true")
     parser.add_argument("--total_timesteps", type=int, default=None,
                         help="학습 총 timestep (미지정 시 yaml total_timestep 사용)")
     parser.add_argument("--model_path", type=str, default=None,
-                        help="학습: 재개용 시작 모델 / 테스트: 추론용 모델 (.zip)")
+                        help="재개용 시작 모델 (.zip). 미지정 시 처음부터 학습")
     parser.add_argument("--seed", type=int, default=None,
                         help="미지정 시 yaml seed 사용")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    if args.run == "train":
-        train(args)
-    elif args.run == "test":
-        test(args)
+    train(parse_args())
