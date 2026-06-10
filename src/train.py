@@ -1,16 +1,3 @@
-"""
-Improved train.py for Go2 quadruped locomotion (Stable-Baselines3 PPO + MuJoCo).
-
-원본(nimazareian/quadruped-rl-locomotion)의 장점(argparse, train/test 분리,
-영상 녹화)과 사용자 코드의 장점(yaml 설정, CheckpointCallback,
-RewardLoggingCallback, base_dir 절대경로, 안전한 close)을 결합한 버전.
-
-⚠️ 가정 (실제 코드에 맞게 조정 필요):
-  - Go2MujocoEnv(prj_path: str, render_mode=None, ...) 형태로 생성 가능하다고 가정.
-  - ctrl_type / camera_name / width / height 인자는 Go2MujocoEnv가 지원할 때만 사용.
-  - params.yaml 키 구조는 사용자 코드와 동일하다고 가정.
-"""
-
 import argparse
 import time
 from pathlib import Path
@@ -92,12 +79,9 @@ def resolve_pretrained_path(cfg: dict, base_dir: Path, cli_path: str | None) -> 
     return None
 
 
-def make_env_kwargs(base_dir: Path, args, render_mode=None) -> dict:
-    """Go2MujocoEnv 생성 인자. ctrl_type은 지원될 때만 추가."""
-    kwargs = {"prj_path": base_dir.as_posix(), "render_mode": render_mode}
-    if getattr(args, "ctrl_type", None) is not None:
-        kwargs["ctrl_type"] = args.ctrl_type  # Go2가 지원하지 않으면 제거할 것
-    return kwargs
+def make_env_kwargs(base_dir: Path, render_mode=None) -> dict:
+    """Go2MujocoEnv 생성 인자 (position 제어 전용)."""
+    return {"prj_path": base_dir.as_posix(), "render_mode": render_mode}
 
 
 # --------------------------------------------------------------------------- #
@@ -124,7 +108,7 @@ def train(args):
             f"{cfg['policy']['batch_size']} 로 나누어떨어지지 않습니다. 미니배치 일부가 버려집니다."
         )
 
-    train_env_kwargs = make_env_kwargs(base_dir, args, render_mode=None)
+    train_env_kwargs = make_env_kwargs(base_dir, render_mode=None)
     vec_env = make_vec_env(
         Go2MujocoEnv,
         env_kwargs=train_env_kwargs,
@@ -231,14 +215,11 @@ def test(args):
         model_path = base_dir / model_path
 
     env_kwargs = {"prj_path": base_dir.as_posix()}
-    if getattr(args, "ctrl_type", None) is not None:
-        env_kwargs["ctrl_type"] = args.ctrl_type
 
     if not args.record_test_episodes:
         env = Go2MujocoEnv(render_mode="human", **env_kwargs)
         inter_frame_sleep = 0.016
     else:
-        # camera_name/width/height 는 Go2MujocoEnv 가 지원할 때만. 미지원 시 제거.
         env = Go2MujocoEnv(
             render_mode="rgb_array",
             camera_name="tracking",
@@ -291,9 +272,6 @@ def parse_args():
                         help="학습 총 timestep (미지정 시 yaml total_timestep 사용)")
     parser.add_argument("--model_path", type=str, default=None,
                         help="학습: 재개용 시작 모델 / 테스트: 추론용 모델 (.zip)")
-    parser.add_argument("--ctrl_type", type=str, default=None,
-                        choices=["torque", "position"],
-                        help="Go2MujocoEnv가 지원할 때만 전달됨")
     parser.add_argument("--seed", type=int, default=None,
                         help="미지정 시 yaml seed 사용")
     return parser.parse_args()

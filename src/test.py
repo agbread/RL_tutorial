@@ -25,6 +25,15 @@ from tqdm.auto import tqdm
 if not hasattr(mujoco.MjData, "solver_iter"):
     setattr(mujoco.MjData, "solver_iter", property(lambda self: self.solver_niter))
 
+# numpy 2.x 로 직렬화된 체크포인트를 numpy 1.x 에서 로드할 때 발생하는
+# `ModuleNotFoundError: numpy.core_` 를 우회하는 호환 패치.
+import sys
+import numpy
+import numpy.core, numpy.core.numeric, numpy.core.multiarray
+sys.modules.setdefault("numpy.core_", numpy.core)
+sys.modules.setdefault("numpy.core_.numeric", numpy.core.numeric)
+sys.modules.setdefault("numpy.core_.multiarray", numpy.core.multiarray)
+
 from stable_baselines3 import PPO
 from go2_mujoco_env import Go2MujocoEnv
 
@@ -107,8 +116,15 @@ def test(args):
     n_render = 0
     last_render = 0.0
 
+    # numpy 버전 불일치로 space 역직렬화가 실패할 수 있어 현재 env 의 space 로 대체
+    custom_objects = {
+        "observation_space": env.observation_space,
+        "action_space": env.action_space,
+    }
+
     try:
-        model = PPO.load(path=str(model_path), env=env, verbose=1)
+        model = PPO.load(path=str(model_path), env=env, verbose=1,
+                         custom_objects=custom_objects)
 
         frames = []
         pbar = tqdm(total=max_steps, desc="rollout", unit="step", dynamic_ncols=True)
@@ -191,7 +207,7 @@ def parse_args():
     # 모델 지정
     parser.add_argument("--model_path", type=str, default=None,
                         help="모델 zip 전체 경로 (지정 시 --model_name/--model_file 무시)")
-    parser.add_argument("--model_name", type=str, default="2026-03-19_16-27-15",
+    parser.add_argument("--model_name", type=str, default="Go2_forth_test",
                         help="models/<model_name>/ 아래에서 모델을 찾음")
     parser.add_argument("--model_file", type=str, default="best_model.zip",
                         help="모델 파일 이름 (예: best_model.zip, final_model.zip)")
