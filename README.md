@@ -15,6 +15,7 @@ Unitree Go2 4족 보행 로봇의 보행(locomotion) 정책을 강화학습(PPO)
 | `go2_locomotion_basic.ipynb` | Go2 보행 환경 / 학습 / 추론 기본 튜토리얼 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/agbread/RL_tutorial/blob/main/notebooks/go2_locomotion_basic.ipynb) |
 | `go2_locomotion_reward_ablation.ipynb` | 보상(reward) 설계 단계별 ablation 실험 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/agbread/RL_tutorial/blob/main/notebooks/go2_locomotion_reward_ablation.ipynb) |
 | `go2_locomotion_train.ipynb` | pretrained 모델 불러와 추가 학습 → 추론 → 영상 생성 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/agbread/RL_tutorial/blob/main/notebooks/go2_locomotion_train.ipynb) |
+| `go2_locomotion_reward_tuning.ipynb` | reward 3회 수정·재학습으로 보행 자세 개선 (라운드별 영상 비교) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/agbread/RL_tutorial/blob/main/notebooks/go2_locomotion_reward_tuning.ipynb) |
 
 > 노트북 첫 셀이 이 repo를 자동으로 clone하고 의존성을 설치합니다. Colab에서는 `/content` 기준으로 동작합니다.
 
