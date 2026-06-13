@@ -7,17 +7,10 @@ torque/ctrl_type 관련 옵션은 다루지 않는다. CLI 인자는 모두 선�
 미지정 시 params.yaml 값을 사용한다.
 """
 
-import os
-# 재현(determinism)용: deterministic cuBLAS workspace. 반드시 torch import 전에 설정해야 함.
-os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
-
 import argparse
-import random
 import time
 from pathlib import Path
 
-import numpy as np
-import torch
 import yaml
 
 from stable_baselines3 import PPO
@@ -31,26 +24,6 @@ from stable_baselines3.common.env_util import make_vec_env
 
 from go2_mujoco_env import Go2MujocoEnv
 from utils.reward_logging_callback import RewardLoggingCallback
-
-
-# --------------------------------------------------------------------------- #
-# Reproducibility
-# --------------------------------------------------------------------------- #
-def enable_determinism(seed: int) -> None:
-    """가능한 한 재현 가능하게 만드는 설정.
-
-    주의: GPU + SubprocVecEnv 환경에서는 완벽한 비트 단위 재현이 보장되지 않으며,
-    deterministic 알고리즘은 학습을 다소 느리게 만든다. 일부 연산은 deterministic
-    구현이 없어 warn_only=True 로 경고만 내고 진행한다.
-    """
-    os.environ["PYTHONHASHSEED"] = str(seed)
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.use_deterministic_algorithms(True, warn_only=True)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
 
 
 # --------------------------------------------------------------------------- #
@@ -126,18 +99,12 @@ def train(args):
 
     model_dir = base_dir / "models"
     log_dir = base_dir / "logs"
-
     model_dir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
 
     n_envs = args.num_parallel_envs or cfg["n_envs"]
     seed = args.seed if args.seed is not None else cfg["seed"]
     total_timesteps = args.total_timesteps or cfg["total_timestep"]
-
-    if args.deterministic:
-        enable_determinism(seed)
-        print(f"[INFO] deterministic 모드 ON (seed={seed}). "
-              f"GPU/SubprocVecEnv 에서는 완전 재현은 보장되지 않으며 다소 느려질 수 있습니다.")
 
     # n_steps * n_envs 가 batch_size 로 나누어떨어지는지 확인 (미니배치 truncation 방지)
     rollout = cfg["policy"]["n_steps"] * n_envs
@@ -166,6 +133,7 @@ def train(args):
     )
 
     try:
+        # 출력은 별도 env 생성 없이 vec_env 의 space 사용 (누수 방지)
         print(f"[INFO] base_dir = {base_dir}")
         print(f"[INFO] n_envs = {n_envs}, seed = {seed}, total_timesteps = {total_timesteps}")
         print(f"[INFO] Action space: {vec_env.action_space}")
@@ -177,6 +145,7 @@ def train(args):
         model_path.mkdir(parents=True, exist_ok=True)
         print(f"[INFO] Saving models to '{model_path}'")
 
+        # 콜백 주기는 '총 timestep 기준' 값을 n_envs 로 나눠 호출 횟수로 변환
         save_freq_steps = cfg["policy"]["n_steps"] * cfg["log"]["interval"]
         checkpoint_callback = CheckpointCallback(
             save_freq=max(save_freq_steps // n_envs, 1),
@@ -206,12 +175,14 @@ def train(args):
             if not Path(pretrained_path).exists():
                 raise FileNotFoundError(f"pretrained model not found: {pretrained_path}")
             print(f"[INFO] Loading pretrained model from {pretrained_path}")
+            # 재개 시에는 저장된 구조/하이퍼파라미터를 신뢰하고, 필요한 것만 명시적으로 갱신.
             model = PPO.load(
                 str(pretrained_path),
                 env=vec_env,
                 verbose=1,
                 tensorboard_log=str(log_dir),
             )
+            # 학습률만 새로 적용하고 싶다면 (스케줄 재생성):
             model.learning_rate = cfg["policy"]["learning_rate"]
             model._setup_lr_schedule()
         else:
@@ -253,9 +224,6 @@ def parse_args():
                         help="재개용 시작 모델 (.zip). 미지정 시 처음부터 학습")
     parser.add_argument("--seed", type=int, default=None,
                         help="미지정 시 yaml seed 사용")
-    parser.add_argument("--deterministic", action=argparse.BooleanOptionalAction,
-                        default=True,
-                        help="재현 가능 모드. --no-deterministic 로 끄면 더 빠르지만 런마다 결과가 달라짐")
     return parser.parse_args()
 
 
