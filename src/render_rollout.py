@@ -30,6 +30,9 @@ def main():
     a = ap.parse_args()
 
     os.environ["MUJOCO_GL"] = a.gl
+    # PyOpenGL 백엔드도 MUJOCO_GL 과 일치시킨다.
+    # (Colab 은 PYOPENGL_PLATFORM=egl 로 미리 설정돼 있어, osmesa 사용 시 충돌 → 명시적으로 맞춤)
+    os.environ["PYOPENGL_PLATFORM"] = a.gl
     sys.path.insert(0, a.prj)
     sys.path.insert(0, os.path.join(a.prj, "src"))
 
