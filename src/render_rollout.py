@@ -29,6 +29,9 @@ def main():
     ap.add_argument("--gl", default="egl")
     a = ap.parse_args()
 
+    def log(m):
+        print("[RR]", m, file=sys.stderr, flush=True)
+
     os.environ["MUJOCO_GL"] = a.gl
     # PyOpenGL 백엔드도 MUJOCO_GL 과 일치시킨다.
     # (Colab 은 PYOPENGL_PLATFORM=egl 로 미리 설정돼 있어, osmesa 사용 시 충돌 → 명시적으로 맞춤)
@@ -36,10 +39,14 @@ def main():
     sys.path.insert(0, a.prj)
     sys.path.insert(0, os.path.join(a.prj, "src"))
 
+    log(f"start gl={a.gl}")
     import torch  # noqa: F401  (mujoco 보다 먼저)
+    log("torch imported")
     import imageio
     from stable_baselines3 import PPO
+    log("sb3 imported")
     import src.go2_mujoco_env as go2_env
+    log("go2 env module imported")
 
     env = go2_env.Go2MujocoEnv(
         prj_path=a.prj, cfg_path=a.cfg, given_command=a.command,
@@ -47,6 +54,7 @@ def main():
         width=a.width, height=a.height,
     )
     env._reset_noise_scale = 0.05
+    log("env created")
     custom_objects = {
         "observation_space": env.observation_space,
         "action_space": env.action_space,
@@ -55,20 +63,25 @@ def main():
     }
     model = PPO.load(a.model, env=env, custom_objects=custom_objects,
                      verbose=0, device="cpu")
+    log("model loaded (cpu)")
 
     max_steps = int(a.max_time_s * a.control_hz)
     render_interval = max(a.control_hz // a.video_fps, 1)
 
     obs, _ = env.reset()
+    log("first render...")
     frames = []
     for step in range(max_steps):
         action, _ = model.predict(obs, deterministic=True)
         obs, reward, terminated, truncated, info = env.step(action)
         if step % render_interval == 0:
             frames.append(env.render())
+            if step == 0:
+                log("first render OK")
         if terminated or truncated:
             obs, _ = env.reset()
     env.close()
+    log(f"rollout done ({len(frames)} frames)")
 
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
     imageio.mimwrite(a.out, frames, fps=a.video_fps,
