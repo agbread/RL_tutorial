@@ -1,0 +1,31 @@
+# Go2 Quadruped RL — 로컬(conda) 실행용 의존성
+# 검증 환경: Python 3.10, Ubuntu 22.04, CUDA 11.7 GPU
+#
+# 설치 예시:
+#   conda create -n go2 python=3.10 -y
+#   conda activate go2
+#   pip install -r requirements.txt
+#
+# ※ torch: 아래는 CPU/기본 빌드 기준입니다. GPU(CUDA)를 쓰려면 환경에 맞는
+#   빌드를 따로 설치하세요. (검증 환경은 2.0.1+cu117)
+#     pip install torch==2.0.1 --index-url https://download.pytorch.org/whl/cu117
+#   (CUDA 버전이 다르면 https://pytorch.org 에서 맞는 명령을 확인)
+
+# --- 핵심: 강화학습 + 시뮬레이터 ---
+numpy==1.26.4
+gymnasium==0.29.1
+stable-baselines3==2.3.0
+mujoco==3.8.0
+torch==2.0.1
+
+# --- 설정 / 영상 / 유틸 ---
+pyyaml==6.0.3
+imageio==2.37.3
+imageio-ffmpeg==0.6.0
+tqdm==4.67.3
+
+# --- 로깅 / 노트북(오프라인 노트북 실행·시각화) ---
+tensorboard==2.20.0
+pygments==2.19.2
+ipython==8.37.0
+notebook==7.5.5
