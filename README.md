@@ -17,16 +17,52 @@ Unitree Go2 4족 보행 로봇의 보행(locomotion) 정책을 강화학습(PPO)
 
 > 노트북 첫 셀이 이 repo를 자동으로 clone하고 의존성을 설치합니다. Colab에서는 `/content` 기준으로 동작합니다.
 
-## 요구 환경
+## 로컬(오프라인) 설치 & 실행
 
-- Python 3.10
-- 주요 패키지: `mujoco` (3.8.0), `stable-baselines3` (2.3.0), `gymnasium`, `numpy` (1.26.4), `imageio`, `pyyaml`, `tqdm`
+검증 환경: **Python 3.10 / Ubuntu 22.04 / CUDA 11.7 GPU**
+
+### 1) conda 환경 생성 + 패키지 설치
 
 ```bash
-pip install "mujoco==3.8.0" "stable-baselines3==2.3.0" gymnasium "numpy==1.26.4" imageio[ffmpeg] pyyaml tqdm
+conda create -n go2 python=3.10 -y
+conda activate go2
+pip install -r requirements.txt
 ```
 
-> 모델 `.zip`은 numpy 버전에 민감합니다. 학습/추론 시 numpy 버전을 맞추세요 (다르면 `ModuleNotFoundError: No module named 'numpy.core_'` 등이 발생할 수 있습니다).
+GPU(CUDA)를 쓰려면 `torch`는 환경에 맞는 빌드로 따로 설치하세요 (검증: `2.0.1+cu117`):
+
+```bash
+pip install torch==2.0.1 --index-url https://download.pytorch.org/whl/cu117
+```
+
+(CUDA 버전이 다르면 https://pytorch.org 에서 맞는 명령을 확인하세요.)
+
+### 2) 학습 / 추론 (CLI)
+
+```bash
+conda activate go2
+cd src
+python train.py     # 학습 (옵션은 아래 "사용법" 참고)
+python test.py      # 추론 + 영상 녹화
+```
+
+### 3) Jupyter 노트북 실행 (오프라인 버전)
+
+```bash
+conda activate go2
+jupyter notebook    # 또는: jupyter lab
+```
+
+브라우저가 열리면 다음 노트북을 열어 위에서부터 실행하세요:
+
+- `notebooks/go2_locomotion_train_offline.ipynb`
+- `notebooks/go2_locomotion_reward_tuning_offline.ipynb`
+
+로컬에서는 라이브 렌더링이 동작해 학습한 모델의 보행 영상이 직접 생성됩니다.
+(Colab 버전 노트북은 렌더가 불안정해 사전 렌더링된 영상을 표시합니다.)
+
+> 모델 `.zip`은 numpy 버전에 민감합니다. `requirements.txt` 의 numpy(1.26.4)를 그대로 사용하세요
+> (다르면 `ModuleNotFoundError: No module named 'numpy.core_'` 등이 발생할 수 있습니다).
 
 ## 디렉터리 구조
 
