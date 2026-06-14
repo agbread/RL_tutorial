@@ -107,10 +107,6 @@ class RewardCalculator:
         """Penalize actual joint position deviation from nominal pose"""
         return self.cost_weights["joint_pos_deviation"] * np.sum(np.square(jpos - nominal_jpos))
 
-    def termination(self, is_terminated):
-        """Large penalty for falling/termination"""
-        return self.cost_weights["termination"] * float(is_terminated)
-
     def gait_enforcement(self, foot_contact_forces, foot_contact_phase):
         """
         Enforce trot gait pattern using quadratic penalty.
@@ -134,27 +130,9 @@ class RewardCalculator:
             else:
                 foot_contact_double[i] = -1.0 * foot_contact_phase[i]
 
-        # ===== Option 1: Quadratic penalty =====
         penalty = np.sum((foot_contact_double - 1.0) ** 2)
         return self.cost_weights["gait_enforcement"] * penalty
 
-        # ===== Option 2: Relaxed log barrier  =====
-        # # Apply relaxed log barrier to keep values in range [-0.6, 2.0]
-        # limit_lower = -0.6
-        # limit_upper = 2.0
-        # delta = 0.1
-        #
-        # barrier_reward = 0.0
-        # for i in range(4):
-        #     barrier_reward += self._relaxed_log_barrier(
-        #         delta, limit_lower, limit_upper, foot_contact_double[i]
-        #     )
-        #
-        # # Clip to prevent extreme gradients
-        # barrier_reward = max(barrier_reward, -300.0)
-        #
-        # # Return as cost (negative reward)
-        # return self.cost_weights["gait_enforcement"] * (-barrier_reward)
 
     def foot_clearance(self, foot_positions, foot_contact_phase):
         """
@@ -176,63 +154,10 @@ class RewardCalculator:
                 foot_clearance_vals[i] = foot_positions[i] - desired_foot_clearance
             else:
                 foot_clearance_vals[i] = 0.0  # Max reward (not enforcing)
-        # print(foot_clearance_vals)
 
-        # ===== Option 1: Quadratic penalty =====
-        # Penalize deviation from desired clearance during swing phase
         penalty = 0.0
         for i in range(4):
             penalty += foot_clearance_vals[i] ** 2
 
         return self.cost_weights["foot_clearance"] * penalty
-
-        # ===== Option 2: Relaxed log barrier =====
-        # limit_lower = -0.08
-        # limit_upper = 1.0
-        # delta = 0.02
-        # barrier_reward = 0.0
-        # for i in range(4):
-        #     barrier_reward += self._relaxed_log_barrier(
-        #         delta, limit_lower, limit_upper, foot_clearance_vals[i]
-        #     )
-        #
-        # # Clip to prevent extreme gradients
-        # barrier_reward = max(barrier_reward, -300.0)
-        #
-        # # Return as cost (negative reward)
-        # return self.cost_weights["foot_clearance"] * (-barrier_reward)
-
-    @staticmethod
-    def _relaxed_log_barrier(delta, alpha_lower, alpha_upper, x):
-        """
-        Relaxed log barrier function
-        Returns positive reward when x is within bounds, negative outside.
-
-        Args:
-            delta: Relaxation parameter
-            alpha_lower: Lower bound
-            alpha_upper: Upper bound
-            x: Value to check
-
-        Returns:
-            Barrier reward (positive inside bounds)
-        """
-        reward = 0.0
-
-        # Lower bound
-        x_temp = x - alpha_lower
-        if x_temp < delta:
-            reward += 0.5 * ((x_temp - 2*delta) / delta)**2 - 1 - np.log(delta)
-        else:
-            reward += -np.log(x_temp)
-
-        # Upper bound
-        x_temp = -(x - alpha_upper)
-        if x_temp < delta:
-            reward += 0.5 * ((x_temp - 2*delta) / delta)**2 - 1 - np.log(delta)
-        else:
-            reward += -np.log(x_temp)
-
-        # Return positive reward (multiply by -1 to flip sign)
-        return -reward
 
