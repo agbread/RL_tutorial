@@ -23,6 +23,7 @@ pyyaml==6.0.3
 imageio==2.37.3
 imageio-ffmpeg==0.6.0
 tqdm==4.67.3
+rich==13.9.4         # sb3 progress_bar(진행바)에 필요
 
 # --- 로깅 / 노트북(오프라인 노트북 실행·시각화) ---
 tensorboard==2.20.0

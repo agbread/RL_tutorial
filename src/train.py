@@ -1,12 +1,3 @@
-"""
-train.py for Go2 quadruped locomotion (Stable-Baselines3 PPO + MuJoCo).
-
-학습 전용 스크립트. 추론/롤아웃/영상 녹화는 test.py 가 담당한다.
-Go2MujocoEnv 는 position 제어 전용(unitree_go2/scene_position.xml)이므로
-torque/ctrl_type 관련 옵션은 다루지 않는다. CLI 인자는 모두 선택값이며,
-미지정 시 params.yaml 값을 사용한다.
-"""
-
 import argparse
 import time
 from pathlib import Path
@@ -36,7 +27,6 @@ def load_config(base_dir: Path) -> dict:
     with cfg_path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
-    # 필수 키 검증 (빠진 키를 조기에 알려줌)
     required_top = ["n_envs", "seed", "eval_freq", "total_timestep"]
     required_policy = [
         "use_pretrained", "learning_rate", "n_steps", "batch_size", "n_epochs",
@@ -106,7 +96,6 @@ def train(args):
     seed = args.seed if args.seed is not None else cfg["seed"]
     total_timesteps = args.total_timesteps or cfg["total_timestep"]
 
-    # n_steps * n_envs 가 batch_size 로 나누어떨어지는지 확인 (미니배치 truncation 방지)
     rollout = cfg["policy"]["n_steps"] * n_envs
     if rollout % cfg["policy"]["batch_size"] != 0:
         print(
@@ -123,7 +112,6 @@ def train(args):
         vec_env_cls=SubprocVecEnv,
     )
 
-    # 평가 전용 env (학습 env와 분리, 단일 환경, seed 다르게)
     eval_env = make_vec_env(
         Go2MujocoEnv,
         env_kwargs=train_env_kwargs,
@@ -133,7 +121,6 @@ def train(args):
     )
 
     try:
-        # 출력은 별도 env 생성 없이 vec_env 의 space 사용 (누수 방지)
         print(f"[INFO] base_dir = {base_dir}")
         print(f"[INFO] n_envs = {n_envs}, seed = {seed}, total_timesteps = {total_timesteps}")
         print(f"[INFO] Action space: {vec_env.action_space}")
@@ -145,7 +132,6 @@ def train(args):
         model_path.mkdir(parents=True, exist_ok=True)
         print(f"[INFO] Saving models to '{model_path}'")
 
-        # 콜백 주기는 '총 timestep 기준' 값을 n_envs 로 나눠 호출 횟수로 변환
         save_freq_steps = cfg["policy"]["n_steps"] * cfg["log"]["interval"]
         checkpoint_callback = CheckpointCallback(
             save_freq=max(save_freq_steps // n_envs, 1),
@@ -175,14 +161,12 @@ def train(args):
             if not Path(pretrained_path).exists():
                 raise FileNotFoundError(f"pretrained model not found: {pretrained_path}")
             print(f"[INFO] Loading pretrained model from {pretrained_path}")
-            # 재개 시에는 저장된 구조/하이퍼파라미터를 신뢰하고, 필요한 것만 명시적으로 갱신.
             model = PPO.load(
                 str(pretrained_path),
                 env=vec_env,
                 verbose=1,
                 tensorboard_log=str(log_dir),
             )
-            # 학습률만 새로 적용하고 싶다면 (스케줄 재생성):
             model.learning_rate = cfg["policy"]["learning_rate"]
             model._setup_lr_schedule()
         else:
@@ -198,7 +182,7 @@ def train(args):
         model.learn(
             total_timesteps=total_timesteps,
             reset_num_timesteps=(pretrained_path is None),
-            progress_bar=True,
+            progress_bar=False,
             tb_log_name=run_name,
             callback=callbacks,
         )
