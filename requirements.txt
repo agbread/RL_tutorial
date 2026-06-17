@@ -26,6 +26,7 @@ tqdm==4.67.3
 rich==13.9.4         # sb3 progress_bar(진행바)에 필요
 
 # --- 로깅 / 노트북(오프라인 노트북 실행·시각화) ---
+setuptools<81        # tensorboard 가 쓰는 pkg_resources 제공 (81+ 에서 제거됨)
 tensorboard==2.20.0
 pygments==2.19.2
 ipython==8.37.0
