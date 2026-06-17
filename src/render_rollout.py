@@ -34,7 +34,10 @@ def main():
         print("[RR]", m, file=sys.stderr, flush=True)
 
     os.environ["MUJOCO_GL"] = a.gl
-    os.environ["PYOPENGL_PLATFORM"] = a.gl
+    # PYOPENGL_PLATFORM 은 PyOpenGL(egl/osmesa) 경로에서만 의미가 있음.
+    # Windows(wgl)/macOS(cgl)/glfw 에서는 설정하면 오히려 깨지므로 건드리지 않는다.
+    if a.gl in ("egl", "osmesa"):
+        os.environ["PYOPENGL_PLATFORM"] = a.gl
     sys.path.insert(0, a.prj)
     sys.path.insert(0, os.path.join(a.prj, "src"))
 
