@@ -14,7 +14,7 @@
 # --- 핵심: 강화학습 + 시뮬레이터 ---
 numpy==1.26.4
 gymnasium==0.29.1
-stable-baselines3==2.3.0
+stable-baselines3==2.3.2
 mujoco==3.8.0
 torch==2.0.1
 
