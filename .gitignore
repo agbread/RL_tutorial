@@ -10,3 +10,4 @@ MUJOCO_LOG.TXT
 
 # Editor / OS
 .DS_Store
+.claude/
