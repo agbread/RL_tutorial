@@ -1,14 +1,4 @@
-"""격리 렌더링 스크립트 (mujoco.Renderer 사용).
 
-Colab에서 학습 직후 같은 커널에서 렌더하면 세션이 죽는 경우가 있어 별도 프로세스로 실행한다:
-  - 깨끗한 새 프로세스 (학습 커널의 누적 상태 없음)
-  - 모델을 CPU 로 로드 (CUDA ↔ EGL 충돌 회피, MLP 추론은 CPU 로 충분히 빠름)
-  - torch 를 mujoco 보다 먼저 import (네이티브 로드 순서 충돌 회피)
-  - 렌더링은 gymnasium 의 OffScreenViewer(env.render()) 대신 **mujoco.Renderer** 사용
-    (gymnasium 의 오프스크린 뷰어는 Colab 에서 mjr_render 단계에서 크래시하는 반면,
-     mujoco.Renderer 는 공식 MuJoCo Colab 튜토리얼이 쓰는 안정적인 경로)
-서브프로세스가 죽어도 노트북 커널은 살아있다.
-"""
 import argparse
 import os
 import sys
@@ -34,8 +24,7 @@ def main():
         print("[RR]", m, file=sys.stderr, flush=True)
 
     os.environ["MUJOCO_GL"] = a.gl
-    # PYOPENGL_PLATFORM 은 PyOpenGL(egl/osmesa) 경로에서만 의미가 있음.
-    # Windows(wgl)/macOS(cgl)/glfw 에서는 설정하면 오히려 깨지므로 건드리지 않는다.
+
     if a.gl in ("egl", "osmesa"):
         os.environ["PYOPENGL_PLATFORM"] = a.gl
     sys.path.insert(0, a.prj)
@@ -51,7 +40,6 @@ def main():
     import src.go2_mujoco_env as go2_env
     log("go2 env module imported")
 
-    # 환경: 시뮬레이션 스텝용 (gymnasium 렌더러는 만들지 않음 → render_mode=None)
     env = go2_env.Go2MujocoEnv(
         prj_path=a.prj, cfg_path=a.cfg, given_command=a.command, render_mode=None,
     )

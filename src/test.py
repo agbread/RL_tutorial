@@ -1,17 +1,3 @@
-"""
-Improved test / rollout script for Go2 quadruped locomotion (SB3 PPO + MuJoCo).
-
-train.py 개선과 동일한 방향:
-  - argparse 복원 (yaml/기본값 폴백 + CLI override)
-  - 모델 경로 하드코딩 제거 (--model_path 또는 --model_name + --model_file)
-  - cfg 경로/키 검증
-  - finally 에서 안전하게 env.close()
-  - 제어 주파수(50Hz) 가정을 --control_hz 로 노출
-
-Go2MujocoEnv 시그니처(prj_path, given_command, render_mode, camera_name,
-width, height)는 원본 test 코드에서 실제 사용 중이므로 그대로 사용.
-"""
-
 import argparse
 import time
 from pathlib import Path
@@ -21,12 +7,10 @@ import mujoco
 import imageio
 from tqdm.auto import tqdm
 
-# 최신 mujoco 호환 shim: MjData.solver_iter -> solver_niter
 if not hasattr(mujoco.MjData, "solver_iter"):
     setattr(mujoco.MjData, "solver_iter", property(lambda self: self.solver_niter))
 
-# numpy 2.x 로 직렬화된 체크포인트를 numpy 1.x 에서 로드할 때 발생하는
-# `ModuleNotFoundError: numpy.core_` 를 우회하는 호환 패치.
+
 import sys
 import numpy
 import numpy.core, numpy.core.numeric, numpy.core.multiarray
@@ -50,7 +34,6 @@ def load_config(base_dir: Path) -> dict:
 
 
 def resolve_model_path(base_dir: Path, args) -> Path:
-    """우선순위: --model_path(전체 경로) > --model_name + --model_file."""
     if args.model_path:
         p = Path(args.model_path)
         return p if p.is_absolute() else base_dir / p
@@ -116,7 +99,6 @@ def test(args):
     n_render = 0
     last_render = 0.0
 
-    # numpy 버전 불일치로 space 역직렬화가 실패할 수 있어 현재 env 의 space 로 대체
     custom_objects = {
         "observation_space": env.observation_space,
         "action_space": env.action_space,
